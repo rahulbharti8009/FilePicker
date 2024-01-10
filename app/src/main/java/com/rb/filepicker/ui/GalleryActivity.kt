@@ -1,7 +1,8 @@
-package com.rb.filepicker.adapter
+package com.rb.filepicker.ui
 
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import com.rb.filepicker.adapter.GalleryAdapter
 import com.rb.filepicker.databinding.ActivityGalleryBinding
 import java.io.File
 
@@ -15,7 +16,7 @@ class GalleryActivity : AppCompatActivity() {
         val directory = File(externalMediaDirs[0].absolutePath)
         val files = directory.listFiles() as Array<File>
 
-        val adapter = GalleryAdapter(files.reversedArray())
+        val adapter = GalleryAdapter(this,files.reversedArray())
         binding.viewPager.adapter = adapter
     }
 }

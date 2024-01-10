@@ -5,13 +5,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
-import android.os.Build
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.RequiresApi
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -19,23 +19,25 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.fragment.app.DialogFragment
 import com.google.android.material.snackbar.Snackbar
 import com.google.common.util.concurrent.ListenableFuture
-import com.rb.filepicker.R
-import com.rb.filepicker.adapter.GalleryActivity
 import com.rb.filepicker.databinding.ActivityCameraImageBinding
-import com.rb.filepicker.databinding.ActivityMainBinding
 import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-class CameraImageActivity : AppCompatActivity() {
+class CameraImageDialog : DialogFragment() {
 private lateinit var binding: ActivityCameraImageBinding
 private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
 private lateinit var cameraSelector: CameraSelector
 private var imageCapture: ImageCapture? = null
 private lateinit var imgCaptureExecutor: ExecutorService
 var cameraFacing = CameraSelector.LENS_FACING_BACK
+    var camera : Camera? = null
+    companion object {
+        val tag = "CameraImageDialog"
+    }
 
 private val cameraPermissionResult =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) { permissionGranted ->
@@ -47,48 +49,60 @@ private val cameraPermissionResult =
                 "The camera permission is necessary",
                 Snackbar.LENGTH_INDEFINITE
             ).show()
-
         }
     }
 
-override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-    binding = ActivityCameraImageBinding.inflate(layoutInflater)
-    setContentView(binding.root)
-
-    cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-    cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
-    imgCaptureExecutor = Executors.newSingleThreadExecutor()
-
-
-    if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-        cameraPermissionResult.launch(Manifest.permission.CAMERA);
-    } else {
-        startCamera()
+    fun  openCamera(listener: Camera) {
+        camera = listener
     }
 
-    binding.imgCaptureBtn.setOnClickListener {
-        takePhoto()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setStyle(STYLE_NORMAL,android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        Log.d(tag, "onCreate")
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        super.onCreateView(inflater, container, savedInstanceState)
+        Log.d(tag, "onCreateView")
+
+        binding = ActivityCameraImageBinding.inflate(inflater)
+        cameraProviderFuture = ProcessCameraProvider.getInstance(requireActivity())
+        cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+        imgCaptureExecutor = Executors.newSingleThreadExecutor()
+        if (ContextCompat.checkSelfPermission(requireActivity(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            cameraPermissionResult.launch(Manifest.permission.CAMERA);
+        } else {
+            startCamera()
+        }
+        binding.imgCaptureBtn.setOnClickListener {
+            takePhoto()
             animateFlash()
         }
-    }
-
-    binding.switchBtn.setOnClickListener {
-        cameraSelector = if (cameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) {
-            CameraSelector.DEFAULT_FRONT_CAMERA
-        } else {
-            CameraSelector.DEFAULT_BACK_CAMERA
+        binding.switchBtn.setOnClickListener {
+            cameraSelector = if (cameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) {
+                CameraSelector.DEFAULT_FRONT_CAMERA
+            } else {
+                CameraSelector.DEFAULT_BACK_CAMERA
+            }
+            startCamera()
         }
-        startCamera()
+        binding.galleryBtn.setOnClickListener {
+            val intent = Intent(context, GalleryActivity::class.java)
+            startActivity(intent)
+        }
+        return binding.root
     }
-    binding.galleryBtn.setOnClickListener {
-        val intent = Intent(this, GalleryActivity::class.java)
-        startActivity(intent)
-    }
-}
 
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        Log.d(tag, "onViewCreated")
+
+    }
 private fun startCamera() {
     val preview = Preview.Builder().build().also {
         it.setSurfaceProvider(binding.preview.surfaceProvider)
@@ -102,24 +116,25 @@ private fun startCamera() {
             cameraProvider.unbindAll()
             cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
         } catch (e: Exception) {
-            Log.d(TAG, "Use case binding failed")
+            Log.d(tag, "Use case binding failed")
         }
-    }, ContextCompat.getMainExecutor(this))
+    }, ContextCompat.getMainExecutor(requireActivity()))
 }
 
 private fun takePhoto() {
     imageCapture?.let {
         val fileName = "JPEG_${System.currentTimeMillis()}"
-        val file = File(externalMediaDirs[0], fileName)
+        val file = File(requireActivity().externalMediaDirs[0], fileName)
         val outputFileOptions = ImageCapture.OutputFileOptions.Builder(file).build()
         it.takePicture(
             outputFileOptions,
             imgCaptureExecutor,
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                    Log.i(TAG, "The image has been saved in ${file.toUri()}")
-                    val intent = Intent(this@CameraImageActivity, GalleryActivity::class.java)
-                    startActivity(intent)
+                    Log.i(tag, "The image has been saved in ${file.toUri()}")
+                    camera?.getFile(file)
+//                    val intent = Intent(requireActivity(), GalleryActivity::class.java)
+//                    startActivity(intent)
                 }
 
                 override fun onError(exception: ImageCaptureException) {
@@ -128,7 +143,7 @@ private fun takePhoto() {
                         "Error taking photo",
                         Toast.LENGTH_LONG
                     ).show()
-                    Log.d(TAG, "Error taking photo:$exception")
+                    Log.d(tag, "Error taking photo:$exception")
                 }
 
             })
@@ -144,7 +159,8 @@ private fun animateFlash() {
     }, 100)
 }
 
-companion object {
-    val TAG = "CameraImageActivity"
-}
+
+    fun interface Camera {
+        fun getFile(file : File)
+    }
 }
